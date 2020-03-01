@@ -1,0 +1,237 @@
+from keras.models import Sequential
+from keras.layers import Conv2D, MaxPooling2D
+from keras.layers import Activation, Dropout, Flatten, Dense
+from keras import backend as K
+import tensorflow as tf
+from keras.callbacks import EarlyStopping,TensorBoard
+from keras.preprocessing.image import ImageDataGenerator
+from keras.optimizers import Adadelta
+import os
+import matplotlib.pyplot as plt
+%matplotlib inline
+# training model 
+
+def imagegen(train_path,valid_path,test_path,batch_size):
+    
+    
+    '''
+    Image generator function 
+    
+    Parameters:
+    train_path - path to the training data set
+    valid_path - path to the validation data set
+    test_path - path to the test data set
+    batch_size - batch size 
+    
+    
+    return: (train_generator, validation_generator, testing_generator)  
+    - training image generator, validation image generator, testing image generator 
+    
+    '''
+
+    #training images augumentation
+    train_datagen = ImageDataGenerator(
+        rescale=1./255,
+        featurewise_center=False,  # set input mean to 0 over the dataset
+        samplewise_center=False,  # set each sample mean to 0
+        featurewise_std_normalization=False,  # divide inputs by std of the dataset
+        samplewise_std_normalization=False,  # divide each input by its std
+        zca_whitening=False,  # apply ZCA whitening
+        rotation_range=10,  # randomly rotate images in the range (degrees, 0 to 180)
+        width_shift_range=0.1,  # randomly shift images horizontally (fraction of total width)
+        height_shift_range=0.1,  # randomly shift images vertically (fraction of total height)
+        horizontal_flip=True,  # randomly flip images
+        vertical_flip=False,validation_split=0.2)
+
+    # validation augumentation 
+    valid_datagen = ImageDataGenerator(rescale=1./255)# only rescaling
+    test_datagen = ImageDataGenerator(rescale=1./255)# only rescaling
+    # this is a generator that will read pictures found in
+    # subfolers of 'data/train', and indefinitely generate
+    # batches of augmented image data
+    train_generator = train_datagen.flow_from_directory(
+            train_path,  # this is the target directory
+            target_size=image_size,  # all images will be resized to 150x150
+            batch_size=batch_size,
+            class_mode='categorical',subset='training')  # since categorical_crossentropy loss is used, we need binary labels
+
+    # this is a similar generator, for validation data
+    '''validation_generator = valid_datagen.flow_from_directory(
+            valid_path,
+            target_size=image_size,
+            batch_size=batch_size,
+            class_mode='categorical')'''
+    validation_generator = train_datagen.flow_from_directory(
+            validation_path,  # this is the target directory
+            target_size=image_size,  # all images will be resized to 150x150
+            batch_size=batch_size,
+            class_mode='categorical',subset='validation')
+    
+    testing_generator = test_datagen.flow_from_directory(
+            test_path,
+            target_size=image_size,
+            batch_size=batch_size,
+            shuffle = False,
+            class_mode='categorical')
+    return train_generator, validation_generator, testing_generator
+
+def fit(model, model_name, image_generator, batch_size, epochs, no_train_img, no_valid_img):
+    
+    '''
+    training function to rain CNN model 
+    
+    Parameters:
+    
+    model - CNN model
+    model_name - model name to save data 
+    image_generator - generator to generate train/validation images
+    batch_size - batch size
+    epochs - number of epochs 
+    no_train_img - number of training images
+    no_valid_img - number of validation images
+    '''
+    
+    
+    
+    #tensorboary
+    print(model.summary())
+    tbc = TensorBoard(log_dir='/output/{}'.format(model_name), histogram_freq=0, write_graph=True, write_images=True)
+    
+    history =model.fit_generator(
+        image_generator[0],
+        steps_per_epoch=no_train_img // batch_size,
+        epochs=epochs,
+        validation_data=image_generator[1],
+        validation_steps=no_valid_img // batch_size,callbacks=[tbc]  )
+    
+    #save
+    model.save('{}.h5'.format(model_name)) 
+    model.save_weights('{}_weights.h5'.format(model_name)) 
+    
+    #plot
+    
+    # Loss Curves
+    plt.figure(figsize=[8,6]);
+    plt.plot(history.history['loss'],'r',linewidth=3.0);
+    plt.plot(history.history['val_loss'],'b',linewidth=3.0);
+    plt.legend(['Training loss', 'Validation Loss'],fontsize=18);
+    plt.xlabel('Epochs ',fontsize=16);
+    plt.ylabel('Loss',fontsize=16);
+    plt.title('Loss Curves {}'.format(model_name),fontsize=16);
+   
+
+    # Accuracy Curves
+    plt.figure(figsize=[8,6])
+    plt.plot(history.history['acc'],'r',linewidth=3.0);
+    plt.plot(history.history['val_acc'],'b',linewidth=3.0);
+    plt.legend(['Training Accuracy', 'Validation Accuracy'],fontsize=18);
+    plt.xlabel('Epochs ',fontsize=16);
+    plt.ylabel('Accuracy',fontsize=16);
+    plt.title('Accuracy Curves {}'.format(model_name),fontsize=16);
+   
+
+    print(history.history['val_acc'][-1])
+import itertools
+import matplotlib.pyplot as plt
+import numpy as np
+%matplotlib inline
+from sklearn.metrics import confusion_matrix, classification_report
+
+
+#plotting confusion matrix
+def plot_confusion_matrix(cm, classes,
+                          normalize=False,
+                          title='Confusion matrix',
+                          cmap='cividis'):
+    """
+    This function prints and plots the confusion matrix.
+    Normalization can be applied by setting `normalize=True`.
+    """
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, rotation=45)
+    plt.yticks(tick_marks, classes)
+
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        print("Normalized confusion matrix")
+    else:
+        print('Confusion matrix, without normalization')
+
+    print(cm)
+
+    thresh = cm.max() / 2.
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        plt.text(j, i, cm[i, j],
+                 horizontalalignment="center",
+                 color="white" if cm[i, j] > thresh else "black")
+
+    plt.tight_layout()
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+    
+#test function
+    
+def predict(model,model_name,image_generator,no_images,batch_size):
+    
+    '''
+    Test function to test the CNN model 
+    
+    
+    model - CNN model
+    model_name - model name to save data 
+    image_generator - image generator to generate test images
+    batch_size = batch size 
+    
+    
+    
+    '''
+    dict_characters = {1:'NORMAL',2:'L1',3:'L2',4:'L3'}
+    steps=no_images/batch_size
+    predictions = model.predict_generator(image_generator[2])
+    predicted_classes = np.argmax(predictions, axis=1)
+    true_classes = image_generator[2].classes
+    class_labels = list(image_generator[2].class_indices.keys())
+    report = classification_report(true_classes, predicted_classes, target_names=class_labels)
+    print(report)  
+    cm =confusion_matrix(true_classes, predicted_classes)
+    cm_plot_labels = list(image_generator[2].class_indices.keys()) 
+    plot_confusion_matrix(cm, cm_plot_labels, title='Confusion Matrix {}'.format(model_name))
+    batch_size = 32
+    image_size = (80, 60)
+    input_shape = (80, 60,3)
+    epochs = 15
+
+    #specify paths for train and test sets
+train_path = 'C:/Users/mon pc/Desktop/train'
+test_path = 'C:/Users/mon pc/Desktop/test'
+valid_path = 'C:/Users/mon pc/Desktop/validation'
+
+if not os.path.exists(train_path):
+    raise Exception('No train folder found')
+
+if not os.path.exists(test_path):
+    raise Exception('No test folder found')
+
+image_generator=imagegen(train_path,valid_path,test_path,batch_size)
+
+model_name = 'Model_1'
+model1 = Sequential()
+model1.add(Conv2D(32, kernel_size=(3, 3),
+                     activation='relu',
+                     input_shape=input_shape,strides=1))
+model1.add(MaxPooling2D(pool_size=(2, 2)))
+
+model1.add(Conv2D(32, (3, 3), activation='relu'))
+model1.add(MaxPooling2D(pool_size=(2, 2)))
+
+model1.add(Flatten())
+model1.add(Dense(128, activation='relu'))
+model1.add(Dense(4, activation='softmax'))
+model1.compile(loss='categorical_crossentropy',
+                  optimizer=Adadelta(),
+                  metrics=['accuracy'])
+
+fit(model1, model_name, image_generator, batch_size, epochs, 9957, 2487)
